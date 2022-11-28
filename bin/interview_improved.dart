@@ -7,36 +7,56 @@ import 'rav_data.dart';
 
 void main(List<String> arguments) async {
   final parserSorted = ParserSorted(
-    parser: Parser(file: File('file.txt'),),
+    parser: ParserDecode(
+      parser: ParserLoad(
+        file: File('file.txt'),
+      ),
+    ),
   );
   final content = await parserSorted.getContent();
+  final contentDecoded = await parserSorted.getContentDecoded();
+  final contentSorted = await parserSorted.getContentSorted();
   if (content.hasData) {
     print('content: ${content.data}');
   } else {
     print('while reading file error received: ${content.error}');
   }
-  // parser.saveContent(
-  //   rawData,
-  // );
+  if (contentDecoded.hasData) {
+    print('Content Decoded');
+    for (final row in contentDecoded.data) {
+      print('decoded row: ${row}');
+    }
+  } else {
+    print('while reading file error received: ${contentDecoded.error}');
+  }
+  if (contentSorted.hasData) {
+    print('Content Sorted');
+    for (final row in contentSorted.data) {
+      print('decoded row: ${row}');
+    }
+  } else {
+    print('while reading file error received: ${contentSorted.error}');
+  }
+  parserSorted.saveContent(
+    rawData,
+  );
 }
 
 
+///
 abstract class ParserI {
   Future<Result<List<int>>> getContent();
-  Future<Result<List<String>>> getContentUnicode();
+  Future<Result<bool>> saveContent(List<int> content);
 }
 
 
-class Parser {
+///
+class ParserLoad implements ParserI {
   final File _file;
   ///
-  Parser({
+  ParserLoad({
     required File file,
-  }) : _file = file.existsSync() ? file : throw Exception();
-  ///
-  File? getFile() {
-    return _file;
-  }
+  }) : _file = file;
   ///
   Future<Result<List<int>>> getContent() async {
     try {
@@ -55,55 +75,116 @@ class Parser {
     }
   }
   ///
-  Future<String?> getContentUnicode() async {
-    final Stream<List<int>> iStream = _file.openRead();
-    String? output;
-    int data;
-    if (await iStream.length > 0) {
-      output = '';
-      await for (final data in iStream) {
-        print('data: $data\n');
-        output = output! + String.fromCharCodes(data);
-      }
+  Future<Result<bool>> saveContent(List<int> content) async {
+    try {
+      final oStream = _file.openWrite();
+      oStream.add(content);
+      return Result(data: true);
+    } catch (e) {
+      return Result(error: Exception(e));
     }
-    return output;
-  }
-  ///
-  void saveContent(List<int> content) async {
-    final oStream = _file.openWrite();
-    oStream.add(content);
   }
 }
 
-class ParserSorted {
-  final Parser _parser;
-  ParserSorted({
-    required Parser parser
+
+///
+class ParserDecode implements ParserI {
+  final ParserI _parser;
+  ///
+  ParserDecode({
+    required ParserI parser,
   }) : _parser = parser;
+  ///
+  @override
   Future<Result<List<int>>> getContent() async {
     return _parser.getContent();
   }
-    Future<Result<List<int>>> getContentSorted() async {
-    return _parser.getContent().then((value) {
-      if (value.hasData) {
-        value.data.sort((a, b) => a.compareTo(b));
+  ///
+  @override
+  Future<Result<bool>> saveContent(List<int> content) {
+    return _parser.saveContent(content);
+  }
+  ///
+  Future<Result<List<String>>> getContentDecoded() async {
+    return _parser.getContent().then((result) {
+      if (result.hasData) {
         return Result(
-          data: value.data,
+          data: _parseLines(result.data),
         );
       }
-      return value;
+      return Result(error: result.error);
     });
+  }
+  ///
+  List<String> _parseLines(List<int> data) {
+    final lines = <String>[];
+    String line = '';
+    for (final code in data) {
+      if (code == 10) {
+        lines.add(line);
+        line = '';
+      } else {
+        line += String.fromCharCode(code);
+      }
+    }
+    if (line.isNotEmpty) {
+      lines.add(line);
+    }
+    return lines;
   }
 }
 
 
+///
+class ParserSorted implements ParserI, ParserDecode {
+  final ParserDecode _parser;
+  ///
+  ParserSorted({
+    required ParserDecode parser
+  }) : _parser = parser;
+  ///
+  Future<Result<List<int>>> getContent() async {
+    return _parser.getContent();
+  }
+  ///
+  @override
+  Future<Result<List<String>>> getContentDecoded() {
+    return _parser.getContentDecoded();
+  }
+  @override
+  Future<Result<bool>> saveContent(List<int> content) {
+    return _parser.saveContent(content);
+  }
+  ///
+  Future<Result<List<String>>> getContentSorted() async {
+    return _parser.getContentDecoded().then((result) {
+      if (result.hasData) {
+        result.data.sort((a, b) => a.compareTo(b));
+        return Result(
+          data: result.data,
+        );
+      }
+      return result;
+    });
+  }
+  ///
+  @override
+  List<String> _parseLines(List<int> data) {
+    throw UnimplementedError();
+  }
+}
+
+
+///
 class Result<T> {
   final T? _data;
-  final Exception? error;
+  final Exception? _error;
   Result({
     data,
-    this.error,
-  }) : _data = data;
+    Exception? error,
+  }) : 
+    _data = data,
+    _error = error;
   ///
   T get data {
     final d = _data;
@@ -114,12 +195,21 @@ class Result<T> {
     }
   }
   ///
-  bool get hasData {
-    if (data != null) {
-      return true;
+  Exception get error {
+    final e = _error;
+    if (e != null) {
+      return e;
     } else {
-      return false;
+      throw Exception('data is null');
     }
   }
   ///
+  bool get hasData => data != null;
+  ///
+  bool get hasError => _error != null;
+  ///
+  @override
+  String toString() {
+    return 'Result{\n\thasData: $hasData; hasError: $hasError\n\tdata:$_data\n\terror:$_error}';
+  }
 }
