@@ -44,14 +44,14 @@ void main(List<String> arguments) async {
 
 
 ///
-abstract class ParserI {
+abstract class ParserBase {
   Future<Result<List<int>>> getContent();
   Future<Result<bool>> saveContent(List<int> content);
 }
 
 
 ///
-class ParserLoad implements ParserI {
+class ParserLoad implements ParserBase {
   final File _file;
   ///
   ParserLoad({
@@ -88,11 +88,11 @@ class ParserLoad implements ParserI {
 
 
 ///
-class ParserDecode implements ParserI {
-  final ParserI _parser;
+class ParserDecode implements ParserBase {
+  final ParserBase _parser;
   ///
   ParserDecode({
-    required ParserI parser,
+    required ParserBase parser,
   }) : _parser = parser;
   ///
   @override
@@ -136,7 +136,7 @@ class ParserDecode implements ParserI {
 
 
 ///
-class ParserSorted implements ParserI, ParserDecode {
+class ParserSorted implements ParserBase, ParserDecode {
   final ParserDecode _parser;
   ///
   ParserSorted({
