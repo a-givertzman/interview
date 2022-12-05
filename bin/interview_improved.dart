@@ -13,30 +13,42 @@ void main(List<String> arguments) async {
       ),
     ),
   );
-  final content = await parserSorted.getContent();
-  final contentDecoded = await parserSorted.getContentDecoded();
-  final contentSorted = await parserSorted.getContentSorted();
-  if (content.hasData) {
-    print('content: ${content.data}');
-  } else {
-    print('while reading file error received: ${content.error}');
-  }
-  if (contentDecoded.hasData) {
-    print('Content Decoded');
-    for (final row in contentDecoded.data) {
-      print('decoded row: ${row}');
-    }
-  } else {
-    print('while reading file error received: ${contentDecoded.error}');
-  }
-  if (contentSorted.hasData) {
-    print('Content Sorted');
-    for (final row in contentSorted.data) {
-      print('decoded row: ${row}');
-    }
-  } else {
-    print('while reading file error received: ${contentSorted.error}');
-  }
+  await parserSorted.getContent().then((result) {
+    result.fold(
+      (data) {
+        print('content: $data');
+      }, 
+      (error) {
+        print('while reading file error received: $error');
+      }
+    );
+  });
+  await parserSorted.getContentDecoded().then((result) {
+    result.fold(
+      (data) {
+        print('Content Decoded');
+        for (final row in data) {
+          print('decoded row: $row');
+        }
+      }, 
+      (error) {
+        print('while reading file error received: $error');
+      }
+    );
+  });
+  await parserSorted.getContentSorted().then((result) {
+    result.fold(
+      (data) {        
+        print('Content Sorted');
+        for (final row in data) {
+          print('decoded row: $row');
+        }
+      },
+      (error) {
+        print('while reading file error received: $error');
+      }
+    );
+  });
   parserSorted.saveContent(
     rawData,
   );
@@ -60,17 +72,17 @@ class ParserLoad implements ParserBase {
   ///
   Future<Result<List<int>>> getContent() async {
     try {
+      print('[ParserLoad.getContent] file: ${_file.absolute}');
+      print('[ParserLoad.getContent] size: ${_file.lengthSync()} bytes');
       final Stream<List<int>> iStream = _file.openRead();
-      List<int> output;
-      output = [];
-      List<int> data;
-      await for (data in iStream) {
-        // print('data: $data\n');
+      List<int> output = [];
+      await for (final data in iStream) {
+        // print('[ParserLoad.getContent] data: $data');
         output.addAll(data);
       }
       return Result(data: output);
     } catch(err) {
-      print(err);
+      print('[ParserLoad.getContent] error: $err');
       return Result(error: Exception(err));
     }
   }
@@ -107,12 +119,12 @@ class ParserDecode implements ParserBase {
   ///
   Future<Result<List<String>>> getContentDecoded() async {
     return _parser.getContent().then((result) {
-      if (result.hasData) {
-        return Result(
-          data: _parseLines(result.data),
-        );
-      }
-      return Result(error: result.error);
+      return result.fold(
+        (data) => Result<List<String>>(data: _parseLines(data)),
+        (error) => Result<List<String>>(error: result.error)
+      );
+      // if (result.hasData) {
+      // }
     });
   }
   ///
@@ -158,13 +170,15 @@ class ParserSorted implements ParserBase, ParserDecode {
   ///
   Future<Result<List<String>>> getContentSorted() async {
     return _parser.getContentDecoded().then((result) {
-      if (result.hasData) {
-        result.data.sort((a, b) => a.compareTo(b));
-        return Result(
-          data: result.data,
-        );
-      }
-      return result;
+      return result.fold(
+        (data) {
+          data.sort((a, b) => a.compareTo(b));
+          return Result(
+            data: result.data,
+          );
+        }, 
+        (error) => Result(error: error),
+      );
     });
   }
   ///
@@ -180,9 +194,10 @@ class Result<T> {
   final T? _data;
   final Exception? _error;
   Result({
-    data,
+    T? data,
     Exception? error,
   }) : 
+    assert(data != null || error != null),
     _data = data,
     _error = error;
   ///
@@ -207,6 +222,23 @@ class Result<T> {
   bool get hasData => data != null;
   ///
   bool get hasError => _error != null;
+  ///
+  S fold<S>(
+    S Function(T data) onData,
+    S Function(Exception error) onError, 
+  ) {
+    final data = _data;
+    if (data != null) {
+      return onData(data);
+    } else {
+      final error = _error;
+      if (error != null) {
+        return onError(error);
+      } else {
+        throw Exception('error cant be null if data is null');
+      }
+    }
+  }
   ///
   @override
   String toString() {
